@@ -1,0 +1,25 @@
+{
+  "name": "cricket-score-backend",
+  "version": "1.0.0",
+  "description": "Lightweight backend server for Cricket Score App — proxies CricBuzz API, caches data, and broadcasts realtime updates via WebSocket",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "pm2": "pm2 start src/index.js --name cricket-backend"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^8.3.1",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
