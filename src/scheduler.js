@@ -1,11 +1,11 @@
 /**
  * scheduler.js
  * ─────────────
- * Smart polling engine. Fetches data from CricBuzz on fixed intervals
+ * Smart polling engine. Fetches data from Cricket Live Line API on fixed intervals
  * and only broadcasts to clients when the data has actually changed.
  *
  * ┌─────────────────────────────────────────────────────────────┐
- * │  Data type     │  Poll interval  │  CricBuzz calls/min      │
+ * │  Data type     │  Poll interval  │  API calls/min           │
  * ├─────────────────────────────────────────────────────────────┤
  * │  Live matches  │  30 s           │  2                        │
  * │  Upcoming      │  5 min          │  0.2                      │

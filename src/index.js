@@ -67,8 +67,9 @@ fastify.register(async function (fastify) {
     socket.on('message', async (rawMessage) => {
       try {
         const msg = JSON.parse(rawMessage.toString());
+        const MATCH_ID_RE = /^\d{1,10}$/;
 
-        if (msg.type === 'getScorecard' && msg.matchId) {
+        if (msg.type === 'getScorecard' && msg.matchId && MATCH_ID_RE.test(String(msg.matchId))) {
           const cacheKey = `scorecard_${msg.matchId}`;
           let data = cache.get(cacheKey);
 
@@ -80,7 +81,7 @@ fastify.register(async function (fastify) {
           broadcaster.sendToOne(socket, 'scorecard', { matchId: msg.matchId, ...data });
         }
 
-        if (msg.type === 'getCommentary' && msg.matchId) {
+        if (msg.type === 'getCommentary' && msg.matchId && MATCH_ID_RE.test(String(msg.matchId))) {
           const data = await provider.getCommentary(msg.matchId);
           broadcaster.sendToOne(socket, 'commentary', { matchId: msg.matchId, ...data });
         }
