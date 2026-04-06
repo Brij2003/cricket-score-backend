@@ -1,6 +1,11 @@
 /**
- * pulseMatchV1.js — CricBuzz match node → PulseMatchV1 wire contract (schema v1).
+ * pulseMatchV1.js — Cricket Live Line match item → PulseMatchV1 wire contract (schema v1).
  * Field names must stay aligned with lib/models/contracts/pulse_match_v1.dart
+ *
+ * Input: flat match item from cricket-live-line-advance API
+ *   item.status: 1=upcoming, 2=completed, 3=live
+ *   item.teama / item.teamb: team objects with scores, overs
+ *   item.timestamp_start: Unix seconds
  */
 
 'use strict';
@@ -11,81 +16,66 @@ function safeStr(v) {
   return v == null ? '' : String(v);
 }
 
-function parseStartMs(matchInfo) {
-  const sd = matchInfo.startDate;
-  if (sd == null) return null;
-  if (typeof sd === 'number' && !Number.isNaN(sd)) return sd;
-  const n = Number(sd);
-  if (!Number.isNaN(n) && n > 1e12) return n;
-  const t = Date.parse(String(sd));
-  return Number.isNaN(t) ? null : t;
-}
-
-function isLiveMatch(matchInfo) {
-  const status = safeStr(matchInfo.status).toLowerCase();
-  const state = safeStr(matchInfo.state).toLowerCase();
-  return status.includes('live') || state === 'in progress';
-}
-
-function isCompleted(matchInfo, statusText) {
-  const s = safeStr(matchInfo.status).toLowerCase();
-  const t = safeStr(statusText).toLowerCase();
-  if (s === 'complete') return true;
-  return ['won', 'tied', 'draw'].some((k) => t.includes(k));
-}
-
-function formatSeriesLine(matchInfo) {
-  const series = safeStr(matchInfo.seriesName || matchInfo.series?.name);
-  const fmt = safeStr(matchInfo.matchFormat || 'T20').toUpperCase();
-  const desc = safeStr(matchInfo.matchDesc);
-  const base = [series, fmt].filter(Boolean).join(' · ');
-  return desc ? `${base} · ${desc}` : base;
-}
-
-function oversLabel(inn) {
-  if (!inn || inn.overs == null) return '';
-  return `${inn.overs} Overs`;
-}
-
-function inningFromScore(scoreSide) {
-  if (!scoreSide) return null;
-  const ing =
-    scoreSide.inngs1 ||
-    scoreSide.innings1 ||
-    scoreSide.firstInning;
-  if (!ing) return null;
+/**
+ * Parse "runs/wickets" score string into { runs, wickets }.
+ * Returns null when scores string is empty.
+ */
+function parseScores(teamSide) {
+  const s = safeStr(teamSide?.scores);
+  if (!s) return null;
+  const slash = s.indexOf('/');
+  if (slash === -1) return null;
+  const runs = parseInt(s.slice(0, slash), 10);
+  const wickets = parseInt(s.slice(slash + 1), 10);
+  if (Number.isNaN(runs)) return null;
   return {
-    runs: Number(ing.runs) || 0,
-    wickets: Number(ing.wickets) || 0,
-    overs: ing.overs != null ? String(ing.overs) : null,
+    runs,
+    wickets: Number.isNaN(wickets) ? 0 : wickets,
+    overs: safeStr(teamSide?.overs) || null,
   };
 }
 
+function oversLabel(overs) {
+  if (!overs) return '';
+  return `${overs} Overs`;
+}
+
+function formatSeriesLine(item) {
+  const title = safeStr(item.competition?.title);
+  const fmt = safeStr(item.format_str).toUpperCase();
+  const sub = safeStr(item.subtitle);
+  return [title, fmt, sub].filter(Boolean).join(' · ');
+}
+
 /**
- * @param {object} matchWrapper — { matchInfo?, matchScore? } or flattened matchInfo
+ * @param {object} item — flat match item from Cricket Live Line API
  * @param {number} nowMs
  * @returns {object} PulseMatchV1
  */
-function matchWrapperToPulse(matchWrapper, nowMs) {
-  const matchInfo = matchWrapper.matchInfo || matchWrapper;
-  const matchScore = matchWrapper.matchScore || {};
-  const team1 = matchInfo.team1 || {};
-  const team2 = matchInfo.team2 || {};
-  const t1Name = safeStr(team1.teamName);
-  const t2Name = safeStr(team2.teamName);
-  const t1Code = safeStr(team1.teamSName || team1.shortName);
-  const t2Code = safeStr(team2.teamSName || team2.shortName);
-  const headline = [t1Name, t2Name].every(Boolean) ? `${t1Name} vs ${t2Name}` : `${t1Code} vs ${t2Code}`;
+function matchItemToPulse(item, nowMs) {
+  const teama = item.teama || {};
+  const teamb = item.teamb || {};
 
-  const statusText = safeStr(matchInfo.statusText || matchInfo.status);
-  const live = isLiveMatch(matchInfo);
-  const completed = !live && isCompleted(matchInfo, statusText);
+  const t1Name = safeStr(teama.name);
+  const t2Name = safeStr(teamb.name);
+  const t1Code = safeStr(teama.short_name);
+  const t2Code = safeStr(teamb.short_name);
+  const headline = [t1Name, t2Name].every(Boolean)
+    ? `${t1Name} vs ${t2Name}`
+    : `${t1Code} vs ${t2Code}`;
+
+  // status: 3=live, 2=completed, 1=upcoming
+  const status = item.status;
+  const live = status === 3;
+  const completed = status === 2;
 
   let phase = 'upcoming';
   if (live) phase = 'live';
   else if (completed) phase = 'completed';
 
-  const startMs = parseStartMs(matchInfo);
+  const startMs =
+    item.timestamp_start != null ? Number(item.timestamp_start) * 1000 : null;
+
   let badge = 'UPCOMING';
   let subtitleEmphasis = 'none';
 
@@ -103,39 +93,45 @@ function matchWrapperToPulse(matchWrapper, nowMs) {
     }
   }
 
-  const t1Score = inningFromScore(matchScore.team1Score);
-  const t2Score = inningFromScore(matchScore.team2Score);
+  const statusText = safeStr(item.status_note || item.live);
 
+  const t1Score = parseScores(teama);
+  const t2Score = parseScores(teamb);
+
+  // subtitle: live → show batting team score; upcoming → show start time; completed → status note
   let subtitle = statusText;
-  if (live && t1Score) {
-    subtitle = `${t1Code} ${t1Score.runs}/${t1Score.wickets}${t1Score.overs ? ` · ${t1Score.overs} ov` : ''}`;
+  if (live && (t1Score || t2Score)) {
+    const battingScore = t2Score || t1Score; // teamb usually bats when teama fielded
+    const battingCode = t2Score ? t2Code : t1Code;
+    subtitle = `${battingCode} ${battingScore.runs}/${battingScore.wickets}${battingScore.overs ? ` · ${battingScore.overs} ov` : ''}`;
   } else if (!live && !completed && startMs) {
     subtitle = statusText || new Date(startMs).toISOString();
   }
 
-  /** @type {object | null} */
+  // hero: only populated when live and at least one team has scores
   let hero = null;
-  if (live && t1Score) {
+  if (live && (t1Score || t2Score)) {
+    const r1 = t1Score || { runs: 0, wickets: 0, overs: null };
     const r2 = t2Score || { runs: 0, wickets: 0, overs: null };
     hero = {
       team1: {
         shortCode: t1Code || '?',
-        runs: t1Score.runs,
-        wickets: t1Score.wickets,
-        oversLabel: oversLabel({ overs: t1Score.overs }),
+        runs: r1.runs,
+        wickets: r1.wickets,
+        oversLabel: oversLabel(r1.overs),
       },
       team2: {
         shortCode: t2Code || '?',
         runs: r2.runs,
         wickets: r2.wickets,
-        oversLabel: oversLabel({ overs: r2.overs }),
+        oversLabel: oversLabel(r2.overs),
       },
     };
   }
 
   return {
-    matchId: safeStr(matchInfo.matchId),
-    seriesLine: formatSeriesLine(matchInfo),
+    matchId: safeStr(item.match_id),
+    seriesLine: formatSeriesLine(item),
     headline,
     phase,
     badge,
@@ -149,6 +145,6 @@ function matchWrapperToPulse(matchWrapper, nowMs) {
 }
 
 module.exports = {
-  matchWrapperToPulse,
+  matchItemToPulse,
   SOON_MS,
 };
