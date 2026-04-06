@@ -21,7 +21,7 @@
 'use strict';
 
 const cron = require('node-cron');
-const cricbuzz = require('./cricbuzz');
+const provider = require('./cricket-live-line');
 const cache = require('./cache');
 const broadcaster = require('./broadcaster');
 const { enrichMatchListResponse } = require('./normalize/matchListEnvelope');
@@ -68,29 +68,20 @@ async function fetchAndUpdate(cacheKey, fetcher, broadcastType, ttl) {
  * Fetch all rankings (bat/bowl/allrounder × test/odi/t20 = 9 calls).
  * Wrapped into a single cache entry and broadcast event.
  */
+/**
+ * Rankings not available in cricket-live-line API.
+ * Returns empty object so cache has a value (avoids 503 on /api/rankings).
+ */
 async function fetchAllRankings() {
   try {
     const previousHash = cache.getHash('rankings');
-    const formats = ['test', 'odi', 't20'];
-    const [batsmen, bowlers, allrounders] = await Promise.all([
-      Promise.all(formats.map(f => cricbuzz.getBatsmenRankings(f).catch(() => null))),
-      Promise.all(formats.map(f => cricbuzz.getBowlerRankings(f).catch(() => null))),
-      Promise.all(formats.map(f => cricbuzz.getAllRounderRankings(f).catch(() => null))),
-    ]);
-
-    const data = {
-      batsmen: { test: batsmen[0], odi: batsmen[1], t20: batsmen[2] },
-      bowlers:  { test: bowlers[0], odi: bowlers[1], t20: bowlers[2] },
-      allrounders: { test: allrounders[0], odi: allrounders[1], t20: allrounders[2] },
-    };
-
+    const data = {};
     const newHash = cache.set('rankings', data, TTL.rankings);
     if (newHash !== previousHash) {
-      console.log(`[Scheduler] rankings CHANGED — broadcasting`);
       broadcaster.broadcast('rankings', data);
     }
   } catch (err) {
-    console.error('[Scheduler] Error fetching rankings:', err.message);
+    console.error('[Scheduler] Error in fetchAllRankings:', err.message);
   }
 }
 
@@ -101,9 +92,9 @@ async function fetchAllRankings() {
 async function warmCache() {
   console.log('[Scheduler] Warming cache on startup...');
   await Promise.allSettled([
-    fetchAndUpdate('live',     cricbuzz.getLiveMatches,     'live',     TTL.live),
-    fetchAndUpdate('upcoming', cricbuzz.getUpcomingMatches, 'upcoming', TTL.upcoming),
-    fetchAndUpdate('recent',   cricbuzz.getRecentMatches,   'recent',   TTL.recent),
+    fetchAndUpdate('live',     provider.getLiveMatches,     'live',     TTL.live),
+    fetchAndUpdate('upcoming', provider.getUpcomingMatches, 'upcoming', TTL.upcoming),
+    fetchAndUpdate('recent',   provider.getRecentMatches,   'recent',   TTL.recent),
     fetchAllRankings(),
   ]);
   console.log('[Scheduler] Cache warm — server ready to accept clients');
@@ -123,21 +114,21 @@ function start() {
   // node-cron doesn't support sub-minute intervals with cron syntax,
   // so we use setInterval for sub-60s polling.
   setInterval(
-    () => fetchAndUpdate('live', cricbuzz.getLiveMatches, 'live', TTL.live),
+    () => fetchAndUpdate('live', provider.getLiveMatches, 'live', TTL.live),
     liveSecs * 1000
   );
   console.log(`[Scheduler] Live matches: every ${liveSecs}s`);
 
   // ── Upcoming matches ─────────────────────────────────────────
   setInterval(
-    () => fetchAndUpdate('upcoming', cricbuzz.getUpcomingMatches, 'upcoming', TTL.upcoming),
+    () => fetchAndUpdate('upcoming', provider.getUpcomingMatches, 'upcoming', TTL.upcoming),
     upcomingSecs * 1000
   );
   console.log(`[Scheduler] Upcoming matches: every ${upcomingSecs}s`);
 
   // ── Recent matches ────────────────────────────────────────────
   setInterval(
-    () => fetchAndUpdate('recent', cricbuzz.getRecentMatches, 'recent', TTL.recent),
+    () => fetchAndUpdate('recent', provider.getRecentMatches, 'recent', TTL.recent),
     recentSecs * 1000
   );
   console.log(`[Scheduler] Recent matches: every ${recentSecs}s`);
