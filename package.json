@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "pm2": "pm2 start src/index.js --name cricket-backend"
+    "pm2": "pm2 start src/index.js --name cricket-backend",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

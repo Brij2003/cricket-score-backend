@@ -24,6 +24,7 @@ const cron = require('node-cron');
 const cricbuzz = require('./cricbuzz');
 const cache = require('./cache');
 const broadcaster = require('./broadcaster');
+const { enrichMatchListResponse } = require('./normalize/matchListEnvelope');
 
 // TTL slightly longer than poll interval to ensure cache is always warm
 const TTL = {
@@ -43,7 +44,11 @@ const TTL = {
 async function fetchAndUpdate(cacheKey, fetcher, broadcastType, ttl) {
   try {
     const previousHash = cache.getHash(cacheKey);
-    const data = await fetcher();
+    const raw = await fetcher();
+    const data =
+      cacheKey === 'live' || cacheKey === 'upcoming' || cacheKey === 'recent'
+        ? enrichMatchListResponse(raw)
+        : raw;
     const newHash = cache.set(cacheKey, data, ttl);
 
     if (newHash !== previousHash) {

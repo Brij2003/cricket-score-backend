@@ -20,6 +20,7 @@ const cache      = require('./cache');
 const scheduler  = require('./scheduler');
 const broadcaster = require('./broadcaster');
 const cricbuzz   = require('./cricbuzz');
+const { emptyMatchListEnvelope } = require('./normalize/matchListEnvelope');
 
 // ── Validate environment ──────────────────────────────────────────────────
 if (!process.env.RAPIDAPI_KEY || process.env.RAPIDAPI_KEY === 'your_rapidapi_key_here') {
@@ -53,10 +54,11 @@ fastify.register(async function (fastify) {
 
     // Immediately send the current cached state as a snapshot
     // so the client has data before the next scheduled poll
+    const emptyList = emptyMatchListEnvelope();
     const snapshot = {
-      live:     cache.get('live')     ?? [],
-      upcoming: cache.get('upcoming') ?? [],
-      recent:   cache.get('recent')   ?? [],
+      live:     cache.get('live')     ?? emptyList,
+      upcoming: cache.get('upcoming') ?? emptyList,
+      recent:   cache.get('recent')   ?? emptyList,
       rankings: cache.get('rankings') ?? {},
     };
     broadcaster.sendToOne(socket, 'snapshot', snapshot);
