@@ -163,3 +163,45 @@ test('missing response returns empty pulseMatches', () => {
   const out = enrichMatchListResponse(null);
   assert.equal(out.pulseMatches.length, 0);
 });
+
+test('upcoming match: phase=upcoming, badge=UPCOMING, hero null', () => {
+  const UPCOMING_ITEM = {
+    match_id: 99001,
+    title: 'India vs England',
+    short_title: 'IND vs ENG',
+    subtitle: '1st ODI',
+    format: 1,
+    format_str: 'ODI',
+    status: 1,
+    status_str: 'Scheduled',
+    status_note: '',
+    competition: { cid: 1, title: 'India Tour of England', match_format: 'odi', season: '2026' },
+    teama: { team_id: 25, name: 'India', short_name: 'IND', scores_full: '', scores: '', overs: '' },
+    teamb: { team_id: 10, name: 'England', short_name: 'ENG', scores_full: '', scores: '', overs: '' },
+    timestamp_start: 9999999999, // far future
+    live: '',
+    result: '',
+  };
+  const raw = { response: { items: [UPCOMING_ITEM] } };
+  const out = enrichMatchListResponse(raw);
+  const m = out.pulseMatches[0];
+  assert.equal(m.phase, 'upcoming');
+  assert.equal(m.badge, 'UPCOMING');
+  assert.equal(m.hero, null);
+  assert.equal(m.matchId, '99001');
+});
+
+test('null item in items array is filtered out safely', () => {
+  const raw = { response: { items: [null, COMPLETED_ITEM, undefined] } };
+  const out = enrichMatchListResponse(raw);
+  assert.equal(out.pulseMatches.length, 1);
+  assert.equal(out.pulseMatches[0].matchId, '87014');
+});
+
+test('live match subtitle shows batting team score', () => {
+  const raw = { response: { items: [LIVE_ITEM] } };
+  const out = enrichMatchListResponse(raw);
+  const m = out.pulseMatches[0];
+  // teamb has 119/6 with 30.1 overs, t2Code = 'ENG-WU19'
+  assert.equal(m.subtitle, 'ENG-WU19 119/6 · 30.1 ov');
+});

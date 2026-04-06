@@ -53,6 +53,7 @@ function formatSeriesLine(item) {
  * @returns {object} PulseMatchV1
  */
 function matchItemToPulse(item, nowMs) {
+  if (!item) return null;
   const teama = item.teama || {};
   const teamb = item.teamb || {};
 
@@ -74,7 +75,9 @@ function matchItemToPulse(item, nowMs) {
   else if (completed) phase = 'completed';
 
   const startMs =
-    item.timestamp_start != null ? Number(item.timestamp_start) * 1000 : null;
+    item.timestamp_start != null
+      ? Math.trunc(Number(item.timestamp_start) * 1000)
+      : null;
 
   let badge = 'UPCOMING';
   let subtitleEmphasis = 'none';
@@ -146,5 +149,4 @@ function matchItemToPulse(item, nowMs) {
 
 module.exports = {
   matchItemToPulse,
-  SOON_MS,
 };

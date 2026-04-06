@@ -29,7 +29,9 @@ function collectMatchItems(raw) {
 function enrichMatchListResponse(rawResponse, nowMs = Date.now()) {
   const raw = rawResponse || {};
   const items = collectMatchItems(raw);
-  const pulseMatches = items.map((item) => matchItemToPulse(item, nowMs));
+  const pulseMatches = items
+    .map((item) => matchItemToPulse(item, nowMs))
+    .filter(Boolean);
   return {
     schemaVersion: 1,
     source: 'cricket-live-line',
