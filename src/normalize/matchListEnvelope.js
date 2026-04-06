@@ -1,56 +1,50 @@
 /**
- * matchListEnvelope.js — Wrap CricBuzz list API response with schema v1 + pulseMatches[]
+ * matchListEnvelope.js — Wrap Cricket Live Line list API response with schema v1 + pulseMatches[]
+ *
+ * New API response shape:
+ *   { status: 'ok', response: { items: [ ...match items... ] } }
+ *
+ * The typeMatches field is always returned as [] for backward compatibility
+ * with any clients that reference it, but is never populated.
  */
 
 'use strict';
 
-const { matchWrapperToPulse } = require('./pulseMatchV1');
+const { matchItemToPulse } = require('./pulseMatchV1');
 
 /**
- * Walk typeMatches tree and collect match objects { matchInfo, matchScore }.
- * @param {object} raw — top-level CricBuzz response
+ * Extract the flat items array from the new API response.
+ * @param {object} raw — top-level API response
  * @returns {object[]}
  */
-function collectMatchWrappers(raw) {
-  const out = [];
-  const typeMatches = raw.typeMatches || [];
-  for (const type of typeMatches) {
-    const seriesMatches = type.seriesMatches || [];
-    for (const series of seriesMatches) {
-      const wrapper = series.seriesAdWrapper || series;
-      const matches = wrapper.matches || [];
-      for (const m of matches) {
-        out.push(m);
-      }
-    }
-  }
-  return out;
+function collectMatchItems(raw) {
+  return raw?.response?.items ?? [];
 }
 
 /**
- * @param {object} rawCricbuzzResponse
+ * @param {object} rawResponse — top-level response from Cricket Live Line matches endpoint
  * @param {number} [nowMs]
- * @returns {{ schemaVersion: number, source: string, pulseMatches: object[], typeMatches: unknown[] }}
+ * @returns {{ schemaVersion: number, source: string, pulseMatches: object[], typeMatches: [] }}
  */
-function enrichMatchListResponse(rawCricbuzzResponse, nowMs = Date.now()) {
-  const raw = rawCricbuzzResponse || {};
-  const wrappers = collectMatchWrappers(raw);
-  const pulseMatches = wrappers.map((w) => matchWrapperToPulse(w, nowMs));
+function enrichMatchListResponse(rawResponse, nowMs = Date.now()) {
+  const raw = rawResponse || {};
+  const items = collectMatchItems(raw);
+  const pulseMatches = items.map((item) => matchItemToPulse(item, nowMs));
   return {
     schemaVersion: 1,
-    source: 'cricbuzz',
+    source: 'cricket-live-line',
     pulseMatches,
-    typeMatches: raw.typeMatches ?? [],
+    typeMatches: [],
   };
 }
 
 /**
- * Empty envelope when cache has no data yet (must be object, not []).
+ * Empty envelope when cache has no data yet.
  */
 function emptyMatchListEnvelope() {
   return {
     schemaVersion: 1,
-    source: 'cricbuzz',
+    source: 'cricket-live-line',
     pulseMatches: [],
     typeMatches: [],
   };
@@ -58,6 +52,6 @@ function emptyMatchListEnvelope() {
 
 module.exports = {
   enrichMatchListResponse,
-  collectMatchWrappers,
+  collectMatchItems,
   emptyMatchListEnvelope,
 };
