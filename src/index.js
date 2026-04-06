@@ -4,11 +4,11 @@
  * Lightweight Fastify server with:
  *   - REST endpoints for initial data load
  *   - WebSocket endpoint for realtime score pushes
- *   - Smart polling scheduler (only polls CricBuzz, not each client)
+ *   - Smart polling scheduler (only polls Cricket Live Line API, not each client)
  *   - In-memory cache (Redis-ready upgrade path)
  *
  * Handles 100-200 concurrent WebSocket connections easily on a free-tier server.
- * Maximum CricBuzz API usage: ~3 calls/minute regardless of user count.
+ * Maximum Cricket Live Line API usage: ~2.35 calls/minute regardless of user count.
  */
 
 'use strict';
@@ -19,7 +19,7 @@ const Fastify = require('fastify');
 const cache      = require('./cache');
 const scheduler  = require('./scheduler');
 const broadcaster = require('./broadcaster');
-const cricbuzz   = require('./cricbuzz');
+const provider   = require('./cricket-live-line');
 const { emptyMatchListEnvelope } = require('./normalize/matchListEnvelope');
 
 // ── Validate environment ──────────────────────────────────────────────────
@@ -74,14 +74,14 @@ fastify.register(async function (fastify) {
 
           if (!data) {
             // Fetch on-demand — only happens once per match, then cached
-            data = await cricbuzz.getScorecard(msg.matchId);
+            data = await provider.getMatchAdvance(msg.matchId);
             cache.set(cacheKey, data, 35); // 35s TTL
           }
           broadcaster.sendToOne(socket, 'scorecard', { matchId: msg.matchId, ...data });
         }
 
         if (msg.type === 'getCommentary' && msg.matchId) {
-          const data = await cricbuzz.getLiveCommentary(msg.matchId);
+          const data = await provider.getCommentary(msg.matchId);
           broadcaster.sendToOne(socket, 'commentary', { matchId: msg.matchId, ...data });
         }
 
@@ -145,7 +145,7 @@ fastify.get('/api/scorecard/:matchId', async (req, reply) => {
   let data = cache.get(cacheKey);
   if (!data) {
     try {
-      data = await cricbuzz.getScorecard(matchId);
+      data = await provider.getMatchAdvance(matchId);
       cache.set(cacheKey, data, 35);
     } catch (err) {
       return reply.code(502).send({ error: err.message });
@@ -165,7 +165,7 @@ fastify.get('/api/match/:matchId', async (req, reply) => {
   let data = cache.get(cacheKey);
   if (!data) {
     try {
-      data = await cricbuzz.getMatchInfo(matchId);
+      data = await provider.getMatchInfo(matchId);
       cache.set(cacheKey, data, 60);
     } catch (err) {
       return reply.code(502).send({ error: err.message });
@@ -181,7 +181,7 @@ fastify.get('/api/match/:matchId', async (req, reply) => {
 fastify.get('/api/commentary/:matchId', async (req, reply) => {
   const { matchId } = req.params;
   try {
-    const data = await cricbuzz.getLiveCommentary(matchId);
+    const data = await provider.getCommentary(matchId);
     return data;
   } catch (err) {
     return reply.code(502).send({ error: err.message });
